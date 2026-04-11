@@ -1,0 +1,74 @@
+# =============================================================================
+# recon-auto — Targets Configuration Example
+# Copy this file: cp config/targets.example.yaml config/targets.yaml
+# Then edit targets.yaml with your actual programs. Never commit targets.yaml!
+# =============================================================================
+
+targets:
+  # ── Example 1: SaaS company ──────────────────────────────────────────────
+  - program_name: "HackerOne"
+    domain: "hackerone.com"
+    company_type: "saas"          # saas | fintech | healthcare | ecommerce | blog
+    has_pii: true
+    has_payment: false
+    bounty_range: "$500-$10000"
+    scope:
+      - "*.hackerone.com"
+      - "hackerone.com"
+    out_of_scope:
+      - "blog.hackerone.com"
+      - "*.hackerone.net"
+    schedule: "daily"             # daily | weekly | manual
+    notify_slack: true
+    ai_triage: true
+
+  # ── Example 2: Fintech ───────────────────────────────────────────────────
+  - program_name: "Bugcrowd Example"
+    domain: "example.com"
+    company_type: "fintech"
+    has_pii: true
+    has_payment: true
+    bounty_range: "$100-$5000"
+    scope:
+      - "app.example.com"
+      - "api.example.com"
+    out_of_scope: []
+    schedule: "weekly"
+    notify_slack: false
+    ai_triage: true
+
+  # ── Example 3: E-commerce ────────────────────────────────────────────────
+  - program_name: "Shop Bug Bounty"
+    domain: "shop.example.io"
+    company_type: "ecommerce"
+    has_pii: true
+    has_payment: true
+    bounty_range: "$50-$2000"
+    scope:
+      - "*.shop.example.io"
+    out_of_scope:
+      - "status.shop.example.io"
+    schedule: "weekly"
+    notify_slack: true
+    ai_triage: false              # Disable AI to save API cost on low-bounty programs
+
+# =============================================================================
+# Global Settings
+# =============================================================================
+settings:
+  rate_limit: 2                   # requests/second per target (default)
+  max_concurrent_tools: 3         # max tools running in parallel
+  screenshot: true                # enable gowitness screenshots
+  ai_triage: true                 # global AI triage toggle (per-target overrides this)
+  slack_alerts: true
+  alert_severity_threshold: "medium"   # alert for: medium | high | critical
+  nuclei_severity: "medium,high,critical"
+  nuclei_rate_limit: 10           # nuclei -rate-limit flag
+  nuclei_rate_limit_waf: 3        # reduced rate when WAF detected
+  httpx_threads: 50
+  timeout_per_tool: 300           # seconds (5 minutes max per tool)
+  output_dir: "results/"
+  log_dir: "logs/"
+  wordlist_dir: "wordlists/"
+  screenshot_dir: "screenshots/"
+  db_path: "db/recon.db"
