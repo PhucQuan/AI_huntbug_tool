@@ -3,6 +3,10 @@ import asyncio
 import sys
 import os
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load .env file TRƯỚC KHI import bất kỳ module nào
+load_dotenv()
 
 from rich.console import Console
 from rich.table import Table

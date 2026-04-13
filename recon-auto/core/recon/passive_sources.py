@@ -16,8 +16,10 @@ from typing import List
 from urllib.parse import quote
 
 import httpx
+from dotenv import load_dotenv
 from rich.console import Console
 
+load_dotenv()
 console = Console()
 
 
