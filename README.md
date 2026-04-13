@@ -182,9 +182,45 @@ cd recon-auto
 
 ### Bước 2: Cài Python dependencies
 
+**Trên Kali Linux / Debian-based:**
 ```bash
+# Tạo virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
+
+**Trên Ubuntu / macOS:**
+```bash
+# Option 1: Virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Option 2: User install
+pip install --user -r requirements.txt
+
+# Option 3: System-wide (cần sudo)
+sudo pip install -r requirements.txt
+```
+
+**Trên Windows:**
+```bash
+# Tạo virtual environment
+python -m venv venv
+
+# Activate
+venv\Scripts\activate
+
+# Install
+pip install -r requirements.txt
+```
+
+**Lưu ý:** Sau khi activate venv, prompt sẽ có `(venv)` ở đầu. Tất cả lệnh sau đó phải chạy trong venv này.
 
 ```
 # requirements.txt
@@ -847,7 +883,99 @@ Tools used      : subfinder, httpx, nuclei, dalfox
 
 ---
 
-## License
+## 🐛 Troubleshooting
+
+### Lỗi "externally-managed-environment" trên Kali Linux
+
+**Vấn đề:**
+```
+error: externally-managed-environment
+```
+
+**Giải pháp:**
+```bash
+# Tạo và activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Giờ install được rồi
+pip install -r requirements.txt
+
+# Nhớ activate venv mỗi khi mở terminal mới
+source venv/bin/activate
+```
+
+### Tool không được tìm thấy
+
+**Vấn đề:**
+```
+[!] subfinder: not installed, skipping
+```
+
+**Giải pháp:**
+```bash
+# Check xem Go đã cài chưa
+go version
+
+# Nếu chưa có Go
+sudo apt install golang-go -y
+
+# Set GOPATH
+echo 'export GOPATH=$HOME/go' >> ~/.bashrc
+echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.bashrc
+source ~/.bashrc
+
+# Install tool
+go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+
+# Verify
+which subfinder
+```
+
+### API key không được load
+
+**Vấn đề:**
+```
+[!] AI features will fallback
+```
+
+**Giải pháp:**
+```bash
+# Check file .env có tồn tại không
+ls -la .env
+
+# Check nội dung
+cat .env
+
+# Đảm bảo format đúng (không có dấu ngoặc, khoảng trắng)
+GEMINI_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Install python-dotenv nếu chưa có
+pip install python-dotenv
+```
+
+### Permission denied khi chạy tools
+
+**Vấn đề:**
+```
+Permission denied: nmap
+```
+
+**Giải pháp:**
+```bash
+# Option 1: Chạy với sudo (không khuyến nghị cho toàn bộ script)
+sudo python main.py scan -d example.com
+
+# Option 2: Set capabilities cho nmap
+sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip $(which nmap)
+
+# Option 3: Add user vào group
+sudo usermod -aG sudo $USER
+```
+
+---
+
+## 📝 License
 
 For educational and authorized security testing purposes only.  
 The author is not responsible for misuse of this tool.
