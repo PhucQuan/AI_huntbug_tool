@@ -37,31 +37,43 @@ class WebAnalysis:
 
     async def run_httpx(self, subdomains: list[str]) -> list[dict]:
         """Runs httpx to check host vitality and technologies."""
+        os.makedirs(self.output_dir, exist_ok=True)
         input_file = f"{self.output_dir}/temp_subdomains.txt"
-        output_file = f"{self.output_dir}/httpx_results.json"
         
         with open(input_file, "w") as f:
             f.write("\n".join(subdomains))
 
         console.print(f"[→] Running httpx on {len(subdomains)} hosts...")
-        # httpx command with JSON output
-        cmd = f"httpx -l {input_file} -json -status-code -title -tech-detect -silent"
+        cmd = f"httpx -l {input_file} -json -status-code -title -tech-detect -silent -threads 50 -timeout 10"
         stdout = await self._run_command(cmd, "httpx")
+        
+        if not stdout:
+            console.print("[!] httpx returned no output")
+            return []
         
         alive_hosts = []
         for line in stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
             try:
                 data = json.loads(line)
+                # httpx có thể dùng "url" hoặc "input" tùy version
+                url = data.get("url") or data.get("input") or ""
+                if not url:
+                    continue
                 host_info = {
-                    "url": data.get("url"),
-                    "status_code": data.get("status_code"),
+                    "url": url,
+                    "status_code": data.get("status_code") or data.get("status", 0),
                     "title": data.get("title", ""),
-                    "technologies": data.get("tech", []),
+                    "technologies": data.get("tech", []) or data.get("technologies", []),
                     "checked_at": datetime.now().isoformat()
                 }
                 alive_hosts.append(host_info)
             except json.JSONDecodeError:
                 continue
+        
+        console.print(f"[✓] httpx: {len(alive_hosts)} alive hosts found")
 
         # Optional json dump for debugging
         with open(output_file, "w") as f:
