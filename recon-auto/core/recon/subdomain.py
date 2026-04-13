@@ -152,13 +152,6 @@ class SubdomainEnumerator:
         console.print(f"[bold blue]Starting enumeration for: {domain}[/bold blue]")
 
         # 1. Run active tools in parallel
-        tasks = [
-            self.run_subfinder(domain),
-            self.run_amass(domain),
-            self.run_assetfinder(domain),
-            self.run_findomain(domain),
-        ]
-
         results_map = {}
 
         async def task_wrapper(coro, name):
