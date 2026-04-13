@@ -20,6 +20,33 @@ from scheduler import MonitoringScheduler
 
 console = Console()
 
+def check_critical_tools():
+    """Check critical tools trước khi chạy."""
+    import shutil
+    
+    critical_tools = {
+        "subfinder": "Subdomain enumeration",
+        "httpx": "HTTP probing",
+        "nuclei": "Vulnerability scanning",
+    }
+    
+    missing = []
+    for tool, desc in critical_tools.items():
+        if not shutil.which(tool):
+            missing.append(f"{tool} ({desc})")
+    
+    if missing:
+        console.print("\n[bold red]⚠️  Critical tools missing:[/bold red]")
+        for tool in missing:
+            console.print(f"  - {tool}")
+        console.print("\n[yellow]Run 'python check_tools.py --fix' to see installation commands.[/yellow]")
+        console.print("[dim]Or continue anyway (some features will be disabled)...[/dim]\n")
+        
+        response = input("Continue anyway? (y/N): ")
+        if response.lower() != 'y':
+            console.print("[red]Aborted.[/red]")
+            sys.exit(1)
+
 class ReconAutoCLI:
     def __init__(self, args):
         self.args = args
@@ -122,9 +149,11 @@ class ReconAutoCLI:
     # --- SUBCOMMANDS ---
 
     async def cmd_recon(self):
+        check_critical_tools()  # Check tools trước khi chạy
         await self.run_recon_pipeline()
 
     async def cmd_scan(self):
+        check_critical_tools()  # Check tools trước khi chạy
         await self.run_scan_pipeline(from_db=self.args.from_db)
 
     async def cmd_monitor(self):

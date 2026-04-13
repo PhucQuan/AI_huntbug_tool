@@ -246,7 +246,32 @@ sudo apt install nmap amass ffuf masscan -y
 nuclei -update-templates
 ```
 
-### Bước 4: Cài đặt môi trường
+### Bước 4: Check tool dependencies
+
+```bash
+# Check xem đã cài đủ tools chưa
+cd recon-auto
+python check_tools.py
+
+# Xem lệnh cài đặt cho tools còn thiếu
+python check_tools.py --fix
+```
+
+**Output mẫu:**
+```
+╭─────────────────────────────────────────╮
+│ Tool Dependency Check                   │
+│ Total: 20 tools | Installed: 15 | Missing: 5 │
+╰─────────────────────────────────────────╯
+
+⚠️  REQUIRED TOOLS MISSING:
+  - nuclei
+
+✗ Some required tools are missing. Install them first.
+Run with --fix to see installation commands.
+```
+
+### Bước 5: Cài đặt môi trường
 
 ```bash
 cp config/targets.example.yaml config/targets.yaml
@@ -262,7 +287,7 @@ cp .env.example .env
 # Edit .env và điền API keys
 ```
 
-### Bước 5: Init database
+### Bước 6: Init database
 
 ```bash
 python main.py --init-db
