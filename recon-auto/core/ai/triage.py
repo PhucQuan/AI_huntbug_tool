@@ -8,6 +8,20 @@ from rich.console import Console
 
 console = Console()
 
+
+def _init_gemini_client(api_key: str):
+    """Khởi tạo Gemini client, trả về None nếu không có package."""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        return genai.GenerativeModel("gemini-1.5-flash")
+    except ImportError:
+        console.print("[!] google-generativeai not installed. Run: pip install google-generativeai")
+        return None
+    except Exception as e:
+        console.print(f"[!] Gemini init error: {e}")
+        return None
+
 @dataclass
 class VerificationResult:
     finding_id: int
