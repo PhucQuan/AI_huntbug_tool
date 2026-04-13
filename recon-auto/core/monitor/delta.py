@@ -1,21 +1,22 @@
 import asyncio
-import hashlib
 import re
 from datetime import datetime
 from typing import List, Dict, Any
+
 import httpx
 from rich.console import Console
 
 console = Console()
 
+
 class AlertManager:
     """Handles alert notifications to external channels like Slack/Telegram."""
+
     def __init__(self, slack_webhook: str = None):
         self.slack_webhook = slack_webhook
         self.sent_alerts = set()
 
     def should_alert(self, identifier: str) -> bool:
-        # Prevent duplicate alerts in a day
         today = datetime.now().strftime('%Y-%m-%d')
         key = f"{identifier}-{today}"
         if key in self.sent_alerts:
@@ -24,16 +25,10 @@ class AlertManager:
         return True
 
     async def send_slack(self, target: str, message: str, severity: str = "Medium"):
-        output = f"""🚨 NEW ASSET DETECTED
-┌────────────────────────────┐
-│ Target   : {target}
-│ Details  : {message}
-│ Severity : {severity.upper()}
-└────────────────────────────┘"""
-        console.print(f"[!] Alert: \n{output}")
+        console.print(f"[!] Alert — Target: {target} | {message} | Severity: {severity.upper()}")
         if self.slack_webhook:
-            # We would post to Slack here
             pass
+
 
 class DeltaDetector:
     """
@@ -51,25 +46,21 @@ class DeltaDetector:
 
     async def check_new_subdomains(self, target_domain: str) -> List[str]:
         """Compares current enumeration with DB to find new assets."""
-        console.print(f"[→] Checking for new subdomains on {target_domain}...")
-        
-        # In a real app we'd retrieve target_id from knowledge graph
-        # For mock purposes, we will use target_domain
+        console.print(f"[->] Checking for new subdomains on {target_domain}...")
+
         current_subs = await self.enumerator.enumerate_subdomains(target_domain)
-        
-        # Assuming KnowledgeGraph provides get_attack_surface (returns dict)
-        # Mocking for generic use context:
+
         existing_subs = []
         try:
-            surface = await self.db.get_attack_surface(1) # Assuming target 1
+            surface = await self.db.get_attack_surface(1)
             existing_subs = [a['value'] for a in surface.get('assets', [])]
         except Exception:
             pass
-            
+
         new_subs = list(set(current_subs) - set(existing_subs))
         for sub in new_subs:
             await self._trigger_immediate_scan(target_domain, sub)
-            
+
         return new_subs
 
     async def _trigger_immediate_scan(self, target_domain: str, subdomain: str):
@@ -77,15 +68,13 @@ class DeltaDetector:
         msg = f"New Asset: {subdomain} (Auto-scanning)"
         if self.alert_manager.should_alert(f"new_sub_{subdomain}"):
             await self.alert_manager.send_slack(target_domain, msg, "high")
-        
         console.print(f"[*] Dispatching priority pipeline for {subdomain}...")
-        # Event trigger for background scan would go here
 
     async def check_cert_transparency(self, domain: str) -> List[str]:
         """Polls crt.sh to find subdomains via new SSL certificates issued within 24h."""
-        console.print(f"[→] Polling Cert Transparency logs for {domain}...")
+        console.print(f"[->] Polling Cert Transparency logs for {domain}...")
         url = f"https://crt.sh/?q=%.{domain}&output=json"
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(url, timeout=30.0)
@@ -100,26 +89,25 @@ class DeltaDetector:
         return []
 
     def _filter_recent_certs(self, certs: List[Dict]) -> List[str]:
-        # Filter for certs issued today realistically
         subs = set()
         today_iso = datetime.now().isoformat()[:10]
         for c in certs:
             if c.get("not_before", "").startswith(today_iso):
-                names = c.get("name_value", "").split("\\n")
+                names = c.get("name_value", "").split("\n")
                 for n in names:
-                    if "*" not in n: subs.add(n)
+                    if "*" not in n:
+                        subs.add(n)
         return list(subs)
 
     async def check_js_endpoints(self, asset_id: int, js_url: str) -> List[str]:
         """Detects new endpoints by diffing JS file content hashes."""
-        console.print(f"[→] Analyzing JS file: {js_url}")
+        console.print(f"[->] Analyzing JS file: {js_url}")
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(js_url, timeout=10.0)
-                content = resp.text
-                endpoints = self._extract_endpoints(content)
+                endpoints = self._extract_endpoints(resp.text)
                 return endpoints
-        except Exception as e:
+        except Exception:
             return []
 
     async def check_ssl_expiry(self, domain: str) -> Dict[str, Any]:
@@ -129,12 +117,10 @@ class DeltaDetector:
     def _extract_endpoints(self, content: str) -> List[str]:
         patterns = [
             r'/(?:api|v[0-9]+)/[a-z0-9\-/]+',
-            r'fetch\([\\'"`]([^\\'"`]+)[\\'"`]\)',
-            r'axios\.\w+\([\\'"`]([^\\'"`]+)[\\'"`]\)'
+            r"fetch\(['\"`]([^'\"`]+)['\"`]\)",
+            r"axios\.\w+\(['\"`]([^'\"`]+)['\"`]\)",
         ]
         found = []
         for p in patterns:
             found.extend(re.findall(p, content))
         return list(set(found))
-
-```
