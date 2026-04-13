@@ -101,9 +101,9 @@ class SubdomainEnumerator:
         return await self._run_command(f"subfinder -d {domain} -silent", "subfinder")
 
     async def run_amass(self, domain: str) -> list[str]:
-        """Runs amass."""
-        # amass is often slow, using passive mode for speed in this skeleton
-        return await self._run_command(f"amass enum -passive -d {domain} -silent", "amass")
+        """Runs amass - disabled (quá chậm, dùng subfinder + passive sources thay thế)."""
+        console.print("[!] amass: skipped (too slow)")
+        return []
 
     async def run_assetfinder(self, domain: str) -> list[str]:
         """Runs assetfinder."""
