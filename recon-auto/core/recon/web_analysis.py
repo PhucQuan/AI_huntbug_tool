@@ -37,18 +37,19 @@ class WebAnalysis:
         console.print(f"[->] Running httpx on {len(subdomains)} hosts...")
 
         httpx_bin = _find_bin("httpx")
+        # Fallback to known path nếu shutil.which không tìm được
+        if not os.path.exists(httpx_bin):
+            httpx_bin = os.path.expanduser("~/go/bin/httpx")
+
+        cmd = (
+            f"{httpx_bin} -l {input_file} "
+            f"-json -status-code -title -tech-detect "
+            f"-threads 50 -timeout 10 -no-color"
+        )
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                httpx_bin,
-                "-l", input_file,
-                "-json",
-                "-status-code",
-                "-title",
-                "-tech-detect",
-                "-threads", "50",
-                "-timeout", "10",
-                "-no-color",
+            process = await asyncio.create_subprocess_shell(
+                cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=_ENV,
@@ -56,9 +57,6 @@ class WebAnalysis:
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=600)
         except asyncio.TimeoutError:
             console.print("[!] httpx timed out after 10 minutes")
-            return []
-        except FileNotFoundError:
-            console.print(f"[!] httpx not found at: {httpx_bin}")
             return []
         except Exception as e:
             logger.error(f"httpx failed: {e}")
