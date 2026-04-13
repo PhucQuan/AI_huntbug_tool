@@ -1,0 +1,88 @@
+# Environment variables (IMPORTANT: Never commit API keys!)
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Recon outputs (sensitive data)
+results/
+reports/
+screenshots/
+wordlists/
+logs/
+git_dumps/
+*.json
+*.txt
+!requirements.txt
+!recon-auto/config/*.example.*
+
+# Database (may contain sensitive findings)
+*.db
+*.sqlite
+*.sqlite3
+recon_auto.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.cache
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Nuclei
+nuclei-templates/
+
+# Secrets
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+secrets.yaml

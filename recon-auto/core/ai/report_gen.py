@@ -176,7 +176,7 @@ class ReportGenerator:
     """
     Generates HackerOne-format bug reports using:
     1. Rule-based CVSS calculation
-    2. Claude API for narrative prose (summary, impact, remediation)
+    2. Gemini API for narrative prose (summary, impact, remediation)
     3. Jinja2 template for Markdown export
     """
 
@@ -186,13 +186,14 @@ class ReportGenerator:
 
         self.client = None
         if not api_key:
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key:
             try:
-                import anthropic
-                self.client = anthropic.Anthropic(api_key=api_key)
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                self.client = genai.GenerativeModel("gemini-1.5-flash")
             except ImportError:
-                console.print("[!] anthropic not installed. Using template-only report generation.")
+                console.print("[!] google-generativeai not installed. Using template-only report generation.")
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -276,9 +277,8 @@ class ReportGenerator:
         return self._template_narrative(finding)
 
     async def _ai_narrative(self, finding: dict, target_context: dict) -> dict:
-        """Call Claude API to generate rich narrative prose."""
-        prompt = f"""
-You are a senior bug bounty hunter writing a professional vulnerability report for HackerOne.
+        """Call Gemini API to generate rich narrative prose."""
+        prompt = f"""You are a senior bug bounty hunter writing a professional vulnerability report for HackerOne.
 
 Finding:
 - Name: {finding.get('name')}
@@ -296,15 +296,19 @@ Write a professional bug report. Return ONLY valid JSON with these exact keys:
   "steps": ["Step 1", "Step 2", "Step 3 — include actual request/response examples"],
   "impact": "Business impact paragraph (2-3 sentences, specific to this company type)",
   "remediation": "Specific, actionable fix recommendations (2-3 sentences)"
-}}
-"""
+}}"""
+        
         try:
-            resp = self.client.messages.create(
-                model="claude-opus-4-6",
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return json.loads(resp.content[0].text)
+            response = self.client.generate_content(prompt)
+            result_text = response.text.strip()
+            
+            # Extract JSON from markdown code blocks if present
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0].strip()
+            
+            return json.loads(result_text)
         except Exception as e:
             console.print(f"[!] AI narrative generation failed: {e}. Using template fallback.")
             return self._template_narrative(finding)

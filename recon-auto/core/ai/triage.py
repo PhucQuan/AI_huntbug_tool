@@ -44,20 +44,14 @@ FP_PATTERNS = {
 
 class AITriage:
     """
-    Integrates LLM (Claude API) to analyze scan results, score based on 
+    Integrates LLM (Gemini API) to analyze scan results, score based on 
     business context, filter false positives, and suggest attack chains.
     """
 
     def __init__(self, api_key: str = None):
         if not api_key:
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        # Try to import only if needed to prevent crash on initialization without package
-        try:
-            import anthropic
-            self.client = anthropic.Anthropic(api_key=api_key) if api_key else None
-        except ImportError:
-            self.client = None
-            console.print("[!] anthropic package not installed. AI features will fallback.")
+            api_key = os.environ.get("GEMINI_API_KEY", "")
+        self.client = _init_gemini_client(api_key) if api_key else None
 
     async def verify_finding(self, finding: Dict[str, Any], finding_id: int) -> VerificationResult:
         """Applies rule-based False Positive filters. Fallback to AI if uncertain."""
@@ -89,112 +83,144 @@ class AITriage:
         )
 
     async def _ai_verify(self, finding: Dict[str, Any], finding_id: int) -> VerificationResult:
-        """Uses Claude to read raw HTTP payload and judge if it is exploitable."""
-        if not self.client: return None
+        """Uses Gemini to read raw HTTP payload and judge if it is exploitable."""
+        if not self.client:
+            return VerificationResult(
+                finding_id=finding_id, is_confirmed=True,
+                confidence=0.5, reason="No AI client available",
+                verified_by="rule_based", needs_manual_check=True
+            )
+        
         prompt = f"Based on this actual HTTP exchange, is this truly exploitable?\nReq: {finding.get('request')}\nRes: {finding.get('response')}"
-        # In a real tool we would make a call to Claude API:
-        # response = self.client.messages.create(...)
-        # We mock it here for skeleton purpose
-        return VerificationResult(
-            finding_id=finding_id, is_confirmed=True,
-            confidence=0.8, reason="AI judges response implies successful exploit.",
-            verified_by="ai", needs_manual_check=False
-        )
+        try:
+            response = self.client.generate_content(prompt)
+            result_text = response.text.lower()
+            is_exploitable = "yes" in result_text or "exploitable" in result_text
+            return VerificationResult(
+                finding_id=finding_id, is_confirmed=is_exploitable,
+                confidence=0.8, reason=response.text[:200],
+                verified_by="ai", needs_manual_check=False
+            )
+        except Exception as e:
+            console.print(f"[!] AI verification error: {e}")
+            return VerificationResult(
+                finding_id=finding_id, is_confirmed=True,
+                confidence=0.5, reason="AI error, assuming TP",
+                verified_by="rule_based", needs_manual_check=True
+            )
 
     async def contextual_score(self, finding: Dict[str, Any], target_context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Uses Claude to contextualize the severity of the vulnerability based on business.
+        Uses Gemini to contextualize the severity of the vulnerability based on business.
         """
         if not self.client: 
             finding['severity_adjusted'] = False
             finding['severity'] = finding.get('severity_original', 'low')
             return finding
 
-        system_prompt = \"\"\"
-        You are a senior bug bounty triager at HackerOne with 10 years experience.
-        You understand that the same vulnerability has different real-world impact
-        depending on business context. Do not rely solely on CVSS.
+        system_prompt = """You are a senior bug bounty triager at HackerOne with 10 years experience.
+You understand that the same vulnerability has different real-world impact depending on business context.
+
+Scoring rules:
+- SSRF on fintech with internal AWS metadata access = Critical
+- SSRF on personal blog with no internal network = Low  
+- XSS on banking portal = High (can steal 2FA tokens)
+- XSS on static marketing site = Low (no sensitive actions)
+- SQLi on healthcare = Critical (HIPAA violation risk)
+- Rate limit bypass on free tier = Informational
+
+Always justify your severity with business impact, not just technical impact."""
         
-        Scoring rules:
-        - SSRF on fintech with internal AWS metadata access = Critical
-        - SSRF on personal blog with no internal network = Low  
-        - XSS on banking portal = High (can steal 2FA tokens)
-        - XSS on static marketing site = Low (no sensitive actions)
-        - SQLi on healthcare = Critical (HIPAA violation risk)
-        - Rate limit bypass on free tier = Informational
-        
-        Always justify your severity with business impact, not just technical impact.
-        \"\"\"
-        
-        user_prompt = f\"\"\"
-        Finding: {finding.get('name')} at {finding.get('url')}
-        Description: {finding.get('description')}
-        
-        Target Context:
-        {json.dumps(target_context, indent=2)}
-        
-        Tasks:
-        1. Assign severity: critical/high/medium/low/informational
-        2. Estimate bounty range based on program's payout history
-        3. Justify severity with business impact (2-3 sentences)
-        4. Rate exploitability: easy/medium/hard
-        
-        Return pure JSON with keys: severity, severity_original, severity_adjusted (bool), bounty_estimate, business_impact, exploitability, confidence (float).
-        \"\"\"
+        user_prompt = f"""Finding: {finding.get('name')} at {finding.get('url')}
+Description: {finding.get('description')}
+
+Target Context: {json.dumps(target_context, indent=2)}
+
+Tasks:
+1. Assign severity: critical/high/medium/low/informational
+2. Estimate bounty range based on program's payout history
+3. Justify severity with business impact (2-3 sentences)
+4. Rate exploitability: easy/medium/hard
+
+Return pure JSON with keys: severity, severity_original, severity_adjusted (bool), bounty_estimate, business_impact, exploitability, confidence (float)."""
 
         try:
-            # Fake Mocking for safe demonstration in CLI
-            # response = self.client.messages.create(
-            #     model="claude-3-opus-20240229",
-            #     max_tokens=1000,
-            #     system=system_prompt,
-            #     messages=[{"role": "user", "content": user_prompt}]
-            # )
-            # return json.loads(response.content[0].text)
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            response = self.client.generate_content(full_prompt)
+            result_text = response.text.strip()
             
-            # Simulated Response:
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0].strip()
+            
+            ai_result = json.loads(result_text)
+            finding_copy = finding.copy()
+            finding_copy.update(ai_result)
+            finding_copy['severity_original'] = finding.get('severity')
+            return finding_copy
+            
+        except Exception as e:
+            console.print(f"[!] AI Triage error: {e}")
             finding_copy = finding.copy()
             finding_copy.update({
                 "severity_original": finding.get('severity'),
-                "severity_adjusted": True,
-                "severity": "High" if "XSS" in finding.get('name', '').upper() else "Medium",
-                "business_impact": "Simulated AI Business Impact Justification.",
-                "bounty_estimate": "$500-$1000",
-                "exploitability": "medium",
-                "confidence": 0.85
+                "severity_adjusted": False,
+                "business_impact": "AI analysis failed",
+                "bounty_estimate": "N/A",
+                "exploitability": "unknown",
+                "confidence": 0.0
             })
             return finding_copy
-        except Exception as e:
-            console.print(f"[!] AI Triage error: {e}")
-            return finding
 
     async def suggest_attack_chains(self, findings: List[Dict[str, Any]], tech_stack: List[str]) -> List[AttackChain]:
         """
-        Feeds multiple findings to Claude to identify chained exploitation paths.
+        Feeds multiple findings to Gemini to identify chained exploitation paths.
         """
         if not self.client or len(findings) < 2: return []
         
-        prompt = f\"\"\"
-        You are an offensive security expert. Given these individual findings
-        and the target's tech stack, suggest possible attack chains that combine
-        multiple vulnerabilities for greater impact.
-        Findings: {json.dumps(findings)}
-        Tech Stack: {tech_stack}
-        
-        Return JSON object with a 'chains' list containing AttackChain schema.
-        \"\"\"
-        # Simulated response:
-        return [
-            AttackChain(
-                name="Mock XSS -> CSRF -> ATO",
-                steps=["Step 1", "Step 2"],
-                combined_severity="high",
-                individual_severities=["medium", "low"],
-                effort="medium",
-                finding_ids=[f.get('id', 0) for f in findings[:2]],
-                why_higher="Chained access leads to complete ATO."
-            )
-        ]
+        prompt = f"""You are an offensive security expert. Given these individual findings
+and the target's tech stack, suggest possible attack chains that combine
+multiple vulnerabilities for greater impact.
+
+Findings: {json.dumps(findings, indent=2)}
+Tech Stack: {tech_stack}
+
+Return JSON object with a 'chains' list. Each chain should have:
+- name: string
+- steps: list of strings
+- combined_severity: string
+- individual_severities: list of strings
+- effort: string
+- finding_ids: list of integers
+- why_higher: string explaining why chained impact is higher"""
+
+        try:
+            response = self.client.generate_content(prompt)
+            result_text = response.text.strip()
+            
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0].strip()
+            
+            data = json.loads(result_text)
+            chains = []
+            for c in data.get('chains', []):
+                chains.append(AttackChain(
+                    name=c.get('name', 'Unknown Chain'),
+                    steps=c.get('steps', []),
+                    combined_severity=c.get('combined_severity', 'medium'),
+                    individual_severities=c.get('individual_severities', []),
+                    effort=c.get('effort', 'medium'),
+                    finding_ids=c.get('finding_ids', []),
+                    why_higher=c.get('why_higher', '')
+                ))
+            return chains
+        except Exception as e:
+            console.print(f"[!] Attack chain suggestion error: {e}")
+            return []
 
     async def triage_findings(self, findings: List[Dict[str, Any]], target_context: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """

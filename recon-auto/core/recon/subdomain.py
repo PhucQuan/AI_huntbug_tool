@@ -2,6 +2,7 @@ import asyncio
 import subprocess
 import aiosqlite
 import dns.asyncresolver
+import os
 from datetime import datetime
 from rich.console import Console
 from rich.table import Table
@@ -108,6 +109,10 @@ class SubdomainEnumerator:
         """Runs assetfinder."""
         return await self._run_command(f"assetfinder --subs-only {domain}", "assetfinder")
 
+    async def run_findomain(self, domain: str) -> list[str]:
+        """Runs findomain."""
+        return await self._run_command(f"findomain -t {domain} -q", "findomain")
+
     async def check_takeover(self, subdomain: str) -> dict:
         """
         Checks for basic subdomain takeover by inspecting CNAME records.
@@ -146,38 +151,48 @@ class SubdomainEnumerator:
 
         console.print(f"[bold blue]Starting enumeration for: {domain}[/bold blue]")
 
-        # 1. Run tools in parallel
-        # Note: Since we only have 3 tools, asyncio.gather satisfies the "max 3" requirement.
+        # 1. Run active tools in parallel
         tasks = [
             self.run_subfinder(domain),
             self.run_amass(domain),
-            self.run_assetfinder(domain)
+            self.run_assetfinder(domain),
+            self.run_findomain(domain),
         ]
-
-        # We'll use a custom way to track individual tool results for the Rich output
-        # instead of just waiting for gather.
 
         results_map = {}
 
-        # We create a wrapper to capture results and tool name for reporting
         async def task_wrapper(coro, name):
             res = await coro
             results_map[name] = res
             if res:
                 console.print(f"[✓] {name}: {len(res)} subdomains")
-            else:
-                # The error handling inside _run_command already prints the [!] or [!] message
-                pass
             return res
 
-        # Execute tasks
+        # Execute active tools
         await asyncio.gather(
             task_wrapper(self.run_subfinder(domain), "subfinder"),
             task_wrapper(self.run_amass(domain), "amass"),
-            task_wrapper(self.run_assetfinder(domain), "assetfinder")
+            task_wrapper(self.run_assetfinder(domain), "assetfinder"),
+            task_wrapper(self.run_findomain(domain), "findomain"),
         )
 
-        # 2. Merge and deduplicate
+        # 2. Run passive sources (import here to avoid circular dependency)
+        try:
+            from .passive_sources import run_passive_sources
+            console.print("[→] Running passive sources...")
+            passive_subs = await run_passive_sources(
+                domain,
+                virustotal_key=os.environ.get("VIRUSTOTAL_API_KEY"),
+                github_token=os.environ.get("GITHUB_TOKEN"),
+            )
+            results_map["passive"] = passive_subs
+            if passive_subs:
+                console.print(f"[✓] passive sources: {len(passive_subs)} subdomains")
+        except Exception as e:
+            console.print(f"[!] Passive sources error: {e}")
+            results_map["passive"] = []
+
+        # 3. Merge and deduplicate
         all_subdomains = set()
         subdomains_to_db = []
 
@@ -187,11 +202,11 @@ class SubdomainEnumerator:
                     all_subdomains.add(sub)
                     subdomains_to_db.append({"domain": sub, "source": tool_name})
 
-        # 3. Save to DB
+        # 4. Save to DB
         if subdomains_to_db:
             await self.db.add_subdomains(subdomains_to_db)
 
-        # 4. Final Report
+        # 5. Final Report
         console.print(f"[→] Total unique: {len(all_subdomains)} subdomains")
 
         return list(all_subdomains)

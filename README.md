@@ -100,13 +100,17 @@ Target Domain
 ## Tính năng
 
 ### 🔍 Recon
-- **Subdomain enumeration** song song: subfinder, amass, assetfinder, puredns
-- **Subdomain takeover check**: fingerprint CNAME với GitHub Pages, Heroku, Netlify, AWS S3...
+- **Subdomain enumeration** song song: subfinder, amass, assetfinder, **findomain**
+- **Passive sources**: crt.sh, Wayback Machine, VirusTotal API, GitHub scraping
+- **Subdomain takeover check**: fingerprint CNAME với GitHub Pages, Heroku, Netlify, AWS S3... (12+ services)
 - **Alive check + tech detection**: httpx với status code, title, tech stack
 - **WAF detection**: wafw00f tự động
-- **Port scan**: nmap smart scan (top 1000 → full chỉ khi cần)
+- **Port scan**: naabu (fast) + nmap (detailed) + masscan (ultra-fast)
 - **Screenshot**: gowitness chụp ảnh toàn bộ alive host
-- **JS endpoint extraction**: katana crawl + extract hidden endpoints từ JS
+- **URL collection**: gau, katana, hakrawler, urlfinder (active + passive)
+- **Parameter discovery**: arjun fuzzing + gf patterns (XSS, SQLi, LFI, SSRF, etc.)
+- **JS analysis**: Extract endpoints, API keys, secrets, tokens từ JS files
+- **.git exposure**: Automated detection + git-dumper extraction
 - **Cert transparency monitoring**: poll crt.sh để biết subdomain mới trước khi public
 
 ### 🎯 Smart Wordlist Generation
@@ -118,6 +122,7 @@ Target Domain
 ### 🔬 Vuln Scan
 - **Nuclei**: chạy theo phase (safe → medium → tech-specific)
 - **XSS**: dalfox với blind XSS support
+- **SQL Injection**: sqlmap + manual error-based detection
 - **Directory brute force**: ffuf + dirsearch với custom wordlist
 - **CORS misconfig**: corsy
 - **CRLF injection**: crlfuzz
@@ -126,12 +131,15 @@ Target Domain
 - **SSRF**: ssrfmap + interactsh OOB
 - **HTTP smuggling**: smuggler
 - **Prototype pollution**: ppmap
+- **Subdomain takeover**: subzy + manual verification
+- **.git exposure**: Automated detection & extraction
 
-### 🤖 AI-Powered Triage
+### 🤖 AI-Powered Triage (Gemini)
 - **Contextual scoring**: severity theo business context (fintech ≠ blog)
 - **False positive filter**: rule-based trước, AI verify khi uncertain
 - **Attack chain suggestion**: combine nhiều finding → impact cao hơn
 - **Bounty estimate**: ước tính bounty dựa trên program history
+- **Powered by Google Gemini**: Free tier, faster response, multilingual support
 
 ### 📊 Recon Intelligence Database
 - Knowledge graph lưu relationship: target → subdomain → technology → CVE
@@ -180,15 +188,16 @@ pip install -r requirements.txt
 
 ```
 # requirements.txt
-anthropic
+google-generativeai  # Gemini AI (thay thế anthropic)
 rich
 click
 apscheduler
 reportlab
 weasyprint
-dataclasses-json
 aiohttp
 aiofiles
+httpx
+beautifulsoup4
 pytest
 pytest-asyncio
 pytest-cov
@@ -215,13 +224,23 @@ go install -v github.com/lc/gau/v2/cmd/gau@latest
 go install -v github.com/hahwul/dalfox/v2@latest
 go install -v github.com/sensepost/gowitness@latest
 go install -v github.com/s0md3v/uro@latest
+go install -v github.com/hakluke/hakrawler@latest
+go install -v github.com/PentestPad/subzy@latest
+
+# findomain (binary release)
+wget https://github.com/Findomain/Findomain/releases/latest/download/findomain-linux
+chmod +x findomain-linux
+sudo mv findomain-linux /usr/local/bin/findomain
 
 # pip tools
 pip install wafw00f
 pip install dirsearch
+pip install arjun
+pip install git-dumper
+pip install sqlmap
 
 # apt tools (Kali/Ubuntu)
-sudo apt install nmap amass ffuf -y
+sudo apt install nmap amass ffuf masscan -y
 
 # Nuclei templates
 nuclei -update-templates
@@ -233,11 +252,14 @@ nuclei -update-templates
 cp config/targets.example.yaml config/targets.yaml
 
 # Set API keys
-export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="AIzaSy..."  # Get free at https://makersuite.google.com/app/apikey
+export VIRUSTOTAL_API_KEY="..."   # optional
+export GITHUB_TOKEN="ghp_..."      # optional
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/..."  # optional
 
 # Hoặc tạo file .env
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+cp .env.example .env
+# Edit .env và điền API keys
 ```
 
 ### Bước 5: Init database
@@ -558,9 +580,35 @@ AI gợi ý chain:
 ## Modules chi tiết
 
 ### core/recon/subdomain.py
-- `enumerate_subdomains(domain)` — chạy subfinder + amass + assetfinder song song
+- `enumerate_subdomains(domain)` — chạy subfinder + amass + assetfinder + findomain + passive sources
 - `check_takeover(subdomain)` — fingerprint CNAME check
 - `SubdomainDB` — CRUD SQLite
+
+### core/recon/passive_sources.py
+- `fetch_crtsh(domain)` — Certificate Transparency logs
+- `fetch_wayback(domain)` — Wayback Machine CDX API
+- `fetch_virustotal(domain, api_key)` — VirusTotal subdomains
+- `fetch_github_subdomains(domain, token)` — GitHub scraping
+- `run_passive_sources(domain)` — orchestrator chạy tất cả
+
+### core/recon/url_collection.py
+- `run_gau(domains)` — passive URL discovery
+- `run_katana(domains, depth)` — active crawling
+- `run_hakrawler(domains)` — lightweight crawler
+- `filter_urls_with_params(urls)` — lọc URLs có parameters
+- `filter_sensitive_files(urls)` — lọc .env, .git, .bak, etc.
+- `filter_js_files(urls)` — lọc JavaScript files
+
+### core/recon/param_discovery.py
+- `run_arjun(url, methods)` — hidden parameter fuzzing
+- `apply_gf_pattern(urls, pattern)` — XSS/SQLi/LFI/SSRF candidates
+- `extract_params_from_urls(urls)` — extract parameter names
+
+### core/recon/js_analysis.py
+- `extract_endpoints(js_content)` — API endpoints từ JS
+- `detect_secrets(js_content)` — AWS keys, tokens, passwords
+- `extract_subdomains(js_content, domain)` — subdomains trong JS
+- `extract_comments(js_content)` — sensitive comments
 
 ### core/recon/web_analysis.py
 - `run_httpx(subdomains)` — alive check + tech detect
@@ -579,13 +627,34 @@ AI gợi ý chain:
 - `run_nuclei_phase(urls, templates, severity)` — phase-based scan
 - `run_full_nuclei_pipeline(hosts)` — tự chọn template theo tech stack
 
-### core/ai/triage.py
-- `contextual_score(finding, target_context)` — AI severity scoring
+### core/scan/port_scanner.py
+- `run_naabu(hosts, ports, rate)` — fast port scanning
+- `run_nmap(host, ports, scan_type)` — detailed service detection
+- `run_masscan(hosts, ports, rate)` — ultra-fast scanning
+
+### core/scan/sqli_scanner.py
+- `filter_sqli_prone_urls(urls)` — lọc PHP/ASP/JSP với SQLi params
+- `run_sqlmap(url, level, risk)` — automated SQLi detection
+- `test_sqli_manual(url)` — manual error-based detection
+
+### core/scan/takeover_scanner.py
+- `run_subzy(subdomains)` — automated takeover checker
+- `check_takeover_manual(subdomain)` — CNAME + fingerprint verification
+- Support 12+ services: GitHub, Heroku, Netlify, S3, Shopify, etc.
+
+### core/scan/git_exposure.py
+- `check_git_exposure(base_url)` — detect exposed .git directories
+- `run_git_dumper(url, output_dir)` — extract repository
+- `list_sensitive_files_in_repo(repo_path)` — scan for .env, keys, credentials
+
+### core/ai/triage.py (Gemini-powered)
+- `contextual_score(finding, target_context)` — AI severity scoring với Gemini
 - `verify_finding(finding)` — false positive filter
 - `suggest_attack_chains(findings, tech_stack)` — chain detection
+- Uses `google-generativeai` SDK với model `gemini-1.5-flash`
 
-### core/ai/report_gen.py
-- `generate_report(finding)` — AI generate HackerOne report
+### core/ai/report_gen.py (Gemini-powered)
+- `generate_report(finding)` — AI generate HackerOne report với Gemini
 - `export_markdown(report, path)` — export .md
 - `export_pdf(report, path)` — export .pdf
 - `calculate_cvss(finding)` — tính CVSS 3.1 score
@@ -622,16 +691,24 @@ recon-auto/
 │   │   ├── base.py             # BasePlugin abstract class
 │   │   └── loader.py           # Auto-discover plugins
 │   ├── recon/
-│   │   ├── subdomain.py        # subfinder, amass, assetfinder
+│   │   ├── subdomain.py        # subfinder, amass, assetfinder, findomain
+│   │   ├── passive_sources.py  # crt.sh, wayback, virustotal, github
 │   │   ├── web_analysis.py     # httpx, katana, wafw00f, gowitness
+│   │   ├── url_collection.py   # gau, katana, hakrawler, urlfinder
+│   │   ├── param_discovery.py  # arjun, gf patterns
+│   │   ├── js_analysis.py      # JS endpoint/secret extraction
 │   │   └── wordlist_gen.py     # Smart wordlist generation
 │   ├── scan/
 │   │   ├── nuclei_runner.py    # Phase-based nuclei
-│   │   ├── web_vulns.py        # XSS, SQLi, LFI, SSRF chains
+│   │   ├── web_vulns.py        # XSS, CORS, SSRF, CRLF chains
+│   │   ├── sqli_scanner.py     # sqlmap + manual SQLi detection
+│   │   ├── port_scanner.py     # naabu, nmap, masscan
+│   │   ├── takeover_scanner.py # subzy + manual takeover check
+│   │   ├── git_exposure.py     # .git detection & extraction
 │   │   └── fuzzer.py           # ffuf, dirsearch wrapper
 │   ├── ai/
-│   │   ├── triage.py           # Contextual scoring + FP filter
-│   │   ├── report_gen.py       # HackerOne report generation
+│   │   ├── triage.py           # Gemini contextual scoring + FP filter
+│   │   ├── report_gen.py       # Gemini HackerOne report generation
 │   │   └── wordlist_ai.py      # Naming convention analysis
 │   ├── monitor/
 │   │   └── delta.py            # Delta detection
@@ -737,11 +814,11 @@ Tools used      : subfinder, httpx, nuclei, dalfox
 | CLI | Click |
 | Terminal UI | Rich |
 | Database | SQLite |
-| AI | Claude API (claude-opus-4-6) |
+| AI | Google Gemini API (gemini-1.5-flash) |
 | Scheduler | APScheduler |
 | PDF export | ReportLab + WeasyPrint |
 | Testing | pytest + pytest-asyncio |
-| Core tools | subfinder, amass, httpx, nuclei, dalfox, ffuf... |
+| Core tools | subfinder, amass, findomain, httpx, nuclei, dalfox, ffuf, naabu, subzy... |
 
 ---
 

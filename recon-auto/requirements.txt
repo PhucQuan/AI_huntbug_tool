@@ -12,8 +12,8 @@ httpx>=0.27.0
 # Database
 aiosqlite>=0.20.0
 
-# AI Integration
-anthropic>=0.25.0
+# AI Integration (Gemini)
+google-generativeai>=0.3.0
 
 # Scheduler
 APScheduler>=3.10.0
