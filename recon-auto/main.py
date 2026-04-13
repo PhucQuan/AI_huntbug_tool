@@ -226,6 +226,22 @@ class ReconAutoCLI:
             )
             self._save("findings", enriched)
             self._print_summary(enriched)
+
+            # Stage 6: AI Report Generation
+            self.print_stage(6, "AI Report Generation")
+            report_gen = ReportGenerator()
+            os.makedirs("reports", exist_ok=True)
+            high_findings = [f for f in enriched if f.get("severity", "").lower() in ["critical", "high"]]
+            console.print(f"[→] Generating reports for {len(high_findings)} high/critical findings...")
+            for finding in high_findings[:5]:  # Limit 5 để tránh quá nhiều API calls
+                try:
+                    report = await report_gen.generate_report(
+                        finding,
+                        target_context={"domain": self.target, "company_type": "automotive"}
+                    )
+                    report_gen.export_markdown(report)
+                except Exception as e:
+                    console.print(f"[!] Report gen error: {e}")
         else:
             console.print("[✓] No vulnerabilities found.")
 
