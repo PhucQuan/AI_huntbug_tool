@@ -27,10 +27,11 @@ class WebAnalysis:
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await process.communicate()
-            if process.returncode != 0 and "not found" in stderr.decode():
+            stderr_text = stderr.decode(errors="ignore")
+            if process.returncode != 0 and "not found" in stderr_text:
                 console.print(f"[!] {tool_name}: not installed or failed")
                 return ""
-            return stdout.decode().strip()
+            return stdout.decode(errors="ignore").strip()
         except Exception as e:
             logger.error(f"{tool_name} execution failed: {e}")
             return ""
@@ -44,7 +45,7 @@ class WebAnalysis:
             f.write("\n".join(subdomains))
 
         console.print(f"[→] Running httpx on {len(subdomains)} hosts...")
-        cmd = f"httpx -l {input_file} -json -status-code -title -tech-detect -silent -threads 50 -timeout 10"
+        cmd = f"httpx -l {input_file} -json -status-code -title -tech-detect -threads 50 -timeout 10 -no-color"
         stdout = await self._run_command(cmd, "httpx")
         
         if not stdout:
