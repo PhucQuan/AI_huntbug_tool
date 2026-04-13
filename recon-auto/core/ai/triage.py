@@ -12,11 +12,11 @@ console = Console()
 def _init_gemini_client(api_key: str):
     """Khởi tạo Gemini client, trả về None nếu không có package."""
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel("gemini-1.5-flash")
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        return client
     except ImportError:
-        console.print("[!] google-generativeai not installed. Run: pip install google-generativeai")
+        console.print("[!] google-genai not installed. Run: pip install google-genai")
         return None
     except Exception as e:
         console.print(f"[!] Gemini init error: {e}")
@@ -107,7 +107,10 @@ class AITriage:
         
         prompt = f"Based on this actual HTTP exchange, is this truly exploitable?\nReq: {finding.get('request')}\nRes: {finding.get('response')}"
         try:
-            response = self.client.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
             result_text = response.text.lower()
             is_exploitable = "yes" in result_text or "exploitable" in result_text
             return VerificationResult(
@@ -160,15 +163,15 @@ Return pure JSON with keys: severity, severity_original, severity_adjusted (bool
 
         try:
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            response = self.client.generate_content(full_prompt)
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=full_prompt
+            )
             result_text = response.text.strip()
-            
-            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0].strip()
             elif "```" in result_text:
                 result_text = result_text.split("```")[1].split("```")[0].strip()
-            
             ai_result = json.loads(result_text)
             finding_copy = finding.copy()
             finding_copy.update(ai_result)
@@ -211,14 +214,15 @@ Return JSON object with a 'chains' list. Each chain should have:
 - why_higher: string explaining why chained impact is higher"""
 
         try:
-            response = self.client.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
             result_text = response.text.strip()
-            
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0].strip()
             elif "```" in result_text:
                 result_text = result_text.split("```")[1].split("```")[0].strip()
-            
             data = json.loads(result_text)
             chains = []
             for c in data.get('chains', []):

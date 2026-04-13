@@ -26,12 +26,19 @@ class WebAnalysis:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await process.communicate()
+            # httpx cần timeout lớn hơn cho nhiều hosts
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=600  # 10 phút
+            )
             stderr_text = stderr.decode(errors="ignore")
             if process.returncode != 0 and "not found" in stderr_text:
                 console.print(f"[!] {tool_name}: not installed or failed")
                 return ""
             return stdout.decode(errors="ignore").strip()
+        except asyncio.TimeoutError:
+            console.print(f"[!] {tool_name}: timed out")
+            return ""
         except Exception as e:
             logger.error(f"{tool_name} execution failed: {e}")
             return ""
@@ -40,40 +47,59 @@ class WebAnalysis:
         """Runs httpx to check host vitality and technologies."""
         os.makedirs(self.output_dir, exist_ok=True)
         input_file = f"{self.output_dir}/temp_subdomains.txt"
-        
+        output_file = f"{self.output_dir}/httpx_results.json"
+
         with open(input_file, "w") as f:
             f.write("\n".join(subdomains))
 
         console.print(f"[→] Running httpx on {len(subdomains)} hosts...")
-        cmd = f"httpx -l {input_file} -json -status-code -title -tech-detect -threads 50 -timeout 10 -no-color"
-        stdout = await self._run_command(cmd, "httpx")
-        
-        if not stdout:
-            console.print("[!] httpx returned no output")
-            return []
-        
+
+        # Dùng -o để ghi ra file thay vì đọc stdout (tránh buffer overflow)
+        cmd = (
+            f"httpx -l {input_file} "
+            f"-o {output_file} "
+            f"-json -status-code -title -tech-detect "
+            f"-threads 50 -timeout 10 -no-color -silent"
+        )
+
+        try:
+            process = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await asyncio.wait_for(process.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            console.print("[!] httpx timed out after 10 minutes")
+        except Exception as e:
+            logger.error(f"httpx execution failed: {e}")
+
+        # Đọc từ output file
         alive_hosts = []
-        for line in stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-                # httpx có thể dùng "url" hoặc "input" tùy version
-                url = data.get("url") or data.get("input") or ""
-                if not url:
+        if not os.path.exists(output_file):
+            console.print("[!] httpx output file not found")
+            return []
+
+        with open(output_file, "r", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
                     continue
-                host_info = {
-                    "url": url,
-                    "status_code": data.get("status_code") or data.get("status", 0),
-                    "title": data.get("title", ""),
-                    "technologies": data.get("tech", []) or data.get("technologies", []),
-                    "checked_at": datetime.now().isoformat()
-                }
-                alive_hosts.append(host_info)
-            except json.JSONDecodeError:
-                continue
-        
+                try:
+                    data = json.loads(line)
+                    url = data.get("url") or data.get("input") or ""
+                    if not url:
+                        continue
+                    alive_hosts.append({
+                        "url": url,
+                        "status_code": data.get("status_code", 0),
+                        "title": data.get("title", ""),
+                        "technologies": data.get("tech", []),
+                        "checked_at": datetime.now().isoformat()
+                    })
+                except json.JSONDecodeError:
+                    continue
+
         console.print(f"[✓] httpx: {len(alive_hosts)} alive hosts found")
 
         # Optional json dump for debugging

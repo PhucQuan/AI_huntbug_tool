@@ -14,7 +14,7 @@ python-dotenv>=1.0.0
 aiosqlite>=0.20.0
 
 # AI Integration (Gemini)
-google-generativeai>=0.3.0
+google-genai>=0.3.0
 
 # DNS
 dnspython>=2.4.0

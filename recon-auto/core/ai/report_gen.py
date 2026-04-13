@@ -189,11 +189,10 @@ class ReportGenerator:
             api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                self.client = genai.GenerativeModel("gemini-1.5-flash")
+                from google import genai
+                self.client = genai.Client(api_key=api_key)
             except ImportError:
-                console.print("[!] google-generativeai not installed. Using template-only report generation.")
+                console.print("[!] google-genai not installed. Run: pip install google-genai")
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -299,15 +298,15 @@ Write a professional bug report. Return ONLY valid JSON with these exact keys:
 }}"""
         
         try:
-            response = self.client.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
             result_text = response.text.strip()
-            
-            # Extract JSON from markdown code blocks if present
-            if "json" in result_text:
-                result_text = result_text.split("json")[1].split("")[0].strip()
-            elif "" in result_text:
-                result_text = result_text.split("")[1].split("")[0].strip()
-            
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0].strip()
             return json.loads(result_text)
         except Exception as e:
             console.print(f"[!] AI narrative generation failed: {e}. Using template fallback.")
