@@ -91,6 +91,32 @@ class WebAnalysis:
                 continue
 
         console.print(f"[✓] httpx: {len(alive_hosts)} alive hosts found")
+
+        # Hiển thị bảng kết quả
+        if alive_hosts:
+            from rich.table import Table
+            table = Table(show_header=True, header_style="bold cyan", show_lines=False)
+            table.add_column("URL", style="bold", max_width=50)
+            table.add_column("Status", justify="center", width=8)
+            table.add_column("Title", max_width=35)
+            table.add_column("Tech Stack", max_width=40)
+
+            for h in alive_hosts[:50]:  # Hiển thị tối đa 50
+                status = h.get("status_code", 0)
+                color = "green" if status == 200 else "yellow" if status in [301,302,403] else "red"
+                techs = ", ".join(h.get("technologies", [])[:4]) or "-"
+                title = (h.get("title") or "-")[:35]
+                table.add_row(
+                    h["url"],
+                    f"[{color}]{status}[/{color}]",
+                    title,
+                    techs
+                )
+
+            console.print(table)
+            if len(alive_hosts) > 50:
+                console.print(f"[dim]... and {len(alive_hosts) - 50} more hosts[/dim]")
+
         return alive_hosts
 
     async def detect_waf(self, url: str) -> str:

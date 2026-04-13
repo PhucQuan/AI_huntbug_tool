@@ -167,11 +167,32 @@ class ReconAutoCLI:
     async def cmd_show(self):
         """Show subdomains or findings for a target."""
         console.print(f"[bold]Querying data for {self.target}...[/bold]")
-        # Mocking query
+
         if self.args.type == "subdomains":
-            console.print(f"Found 12 subdomains for {self.target}...")
-        else:
-            console.print(f"Found 3 findings for {self.target}...")
+            # Đọc từ file temp
+            sub_file = "results/temp_subdomains.txt"
+            if os.path.exists(sub_file):
+                subs = open(sub_file).read().splitlines()
+                console.print(f"[✓] {len(subs)} subdomains for {self.target}")
+                for s in subs[:30]:
+                    console.print(f"  - {s}")
+                if len(subs) > 30:
+                    console.print(f"  [dim]... and {len(subs)-30} more[/dim]")
+            else:
+                console.print("[!] No data found. Run recon first.")
+
+        elif self.args.type == "findings":
+            findings_file = f"results/findings_{datetime.now().strftime('%Y%m%d')}.json"
+            if os.path.exists(findings_file):
+                import json
+                findings = json.load(open(findings_file))
+                console.print(f"[✓] {len(findings)} findings for {self.target}")
+                for f in findings:
+                    sev = f.get('severity', 'info').upper()
+                    color = {"CRITICAL":"bold red","HIGH":"red","MEDIUM":"yellow","LOW":"blue"}.get(sev,"white")
+                    console.print(f"  [{color}][{sev}][/{color}] {f.get('name')} — {f.get('url')}")
+            else:
+                console.print("[!] No findings yet. Run scan first.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Recon-Auto: AI-Powered Bug Bounty Framework")
