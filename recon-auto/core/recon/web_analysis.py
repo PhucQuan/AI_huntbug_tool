@@ -54,12 +54,15 @@ class WebAnalysis:
 
         console.print(f"[→] Running httpx on {len(subdomains)} hosts...")
 
-        # Dùng -o để ghi ra file thay vì đọc stdout (tránh buffer overflow)
+        # Dùng absolute path để tránh path issues
+        output_file = os.path.abspath(output_file)
+        input_file = os.path.abspath(input_file)
+
         cmd = (
             f"httpx -l {input_file} "
             f"-o {output_file} "
             f"-json -status-code -title -tech-detect "
-            f"-threads 50 -timeout 10 -no-color -silent"
+            f"-threads 50 -timeout 10 -no-color"
         )
 
         try:
