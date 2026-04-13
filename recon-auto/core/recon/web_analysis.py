@@ -2,11 +2,23 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 from datetime import datetime
 from rich.console import Console
 
 console = Console()
 logger = logging.getLogger("recon_auto.web_analysis")
+
+# Thêm Go bin vào PATH để tìm được httpx, subfinder, etc.
+_GO_BIN = os.path.expanduser("~/go/bin")
+_ENV = os.environ.copy()
+if _GO_BIN not in _ENV.get("PATH", ""):
+    _ENV["PATH"] = _GO_BIN + ":" + _ENV.get("PATH", "")
+
+
+def _find_bin(name: str) -> str:
+    """Tìm binary trong PATH (bao gồm ~/go/bin)."""
+    return shutil.which(name, path=_ENV["PATH"]) or name
 
 
 class WebAnalysis:
@@ -15,7 +27,7 @@ class WebAnalysis:
         os.makedirs(f"{self.output_dir}/screenshots", exist_ok=True)
 
     async def run_httpx(self, subdomains: list[str]) -> list[dict]:
-        """Runs httpx, reads stdout directly (no -o flag)."""
+        """Runs httpx, reads stdout directly."""
         os.makedirs(self.output_dir, exist_ok=True)
         input_file = os.path.abspath(f"{self.output_dir}/temp_subdomains.txt")
 
@@ -24,9 +36,11 @@ class WebAnalysis:
 
         console.print(f"[->] Running httpx on {len(subdomains)} hosts...")
 
+        httpx_bin = _find_bin("httpx")
+
         try:
             process = await asyncio.create_subprocess_exec(
-                "httpx",
+                httpx_bin,
                 "-l", input_file,
                 "-json",
                 "-status-code",
@@ -37,21 +51,21 @@ class WebAnalysis:
                 "-no-color",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_ENV,
             )
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=600
-            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=600)
         except asyncio.TimeoutError:
             console.print("[!] httpx timed out after 10 minutes")
             return []
         except FileNotFoundError:
-            console.print("[!] httpx: not installed")
+            console.print(f"[!] httpx not found at: {httpx_bin}")
             return []
         except Exception as e:
             logger.error(f"httpx failed: {e}")
             return []
 
         raw = stdout.decode(errors="ignore")
+        console.print(f"[->] httpx raw output: {len(raw)} bytes")
 
         alive_hosts = []
         for line in raw.splitlines():
@@ -84,6 +98,7 @@ class WebAnalysis:
                 f"wafw00f {url}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_ENV,
             )
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=60)
             for line in stdout.decode(errors="ignore").splitlines():
@@ -100,13 +115,17 @@ class WebAnalysis:
         with open(input_file, "w") as f:
             f.write("\n".join([h["url"] for h in alive_hosts]))
         try:
-            process = await asyncio.create_subprocess_shell(
-                f"gowitness file -f {input_file} --screenshot-path {self.output_dir}/screenshots/",
+            gowitness_bin = _find_bin("gowitness")
+            process = await asyncio.create_subprocess_exec(
+                gowitness_bin, "file",
+                "-f", input_file,
+                "--screenshot-path", f"{self.output_dir}/screenshots/",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_ENV,
             )
             await asyncio.wait_for(process.communicate(), timeout=300)
-            console.print(f"[✓] Screenshots saved: {self.output_dir}/screenshots/")
+            console.print(f"[✓] Screenshots saved")
         except Exception:
             console.print("[!] gowitness: not installed, skipping screenshots")
 
@@ -127,5 +146,6 @@ class WebAnalysis:
     async def analyze_hosts(self, subdomains: list[str]) -> list[dict]:
         alive_hosts = await self.run_httpx(subdomains)
         alive_hosts = self.prioritize_targets(alive_hosts)
-        asyncio.create_task(self.take_screenshots(alive_hosts))
+        if alive_hosts:
+            asyncio.create_task(self.take_screenshots(alive_hosts))
         return alive_hosts
