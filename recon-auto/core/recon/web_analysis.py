@@ -87,6 +87,9 @@ class WebAnalysis:
                     continue
                 try:
                     data = json.loads(line)
+                    # Bỏ qua nếu không phải dict
+                    if not isinstance(data, dict):
+                        continue
                     url = data.get("url") or data.get("input") or ""
                     if not url:
                         continue
