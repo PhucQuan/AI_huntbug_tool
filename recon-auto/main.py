@@ -51,7 +51,7 @@ class ReconAutoCLI:
     def __init__(self, args):
         self.args = args
         self.target = args.target
-        self.mode = args.mode
+        self.mode = args.command  # dùng command name làm mode
         self.start_time = datetime.now()
 
         # Core Intelligence & Engine
