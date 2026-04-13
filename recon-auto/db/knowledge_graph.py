@@ -76,7 +76,7 @@ class KnowledgeGraph:
             """)
             # 6. Asset-CVE Mapping
             await db.execute("""
-                CREATE TABLE IF NOT NOT EXISTS asset_cves (
+                CREATE TABLE IF NOT EXISTS asset_cves (
                     asset_id INTEGER REFERENCES assets(id),
                     cve_id INTEGER REFERENCES cves(id),
                     verified BOOLEAN DEFAULT FALSE,
@@ -286,4 +286,3 @@ class KnowledgeGraph:
                 lines.append(f"│   └── ⚠ {cve}")
                 
         return "\n".join(lines)
-```
