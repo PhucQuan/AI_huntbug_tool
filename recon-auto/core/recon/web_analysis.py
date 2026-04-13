@@ -17,7 +17,10 @@ if _GO_BIN not in _ENV.get("PATH", ""):
 
 
 def _find_bin(name: str) -> str:
-    """Tìm binary trong PATH (bao gồm ~/go/bin)."""
+    """Ưu tiên ~/go/bin để tránh nhầm với Python package binaries trong venv."""
+    direct = os.path.join(_GO_BIN, name)
+    if os.path.isfile(direct):
+        return direct
     return shutil.which(name, path=_ENV["PATH"]) or name
 
 
