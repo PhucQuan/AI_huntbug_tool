@@ -72,4 +72,3 @@ class MonitoringScheduler:
         # Invoke nuclei and full scanner here
         pass
 
-```
